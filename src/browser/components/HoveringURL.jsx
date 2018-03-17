@@ -1,18 +1,16 @@
 const React = require('react');
+const PropTypes = require('prop-types');
 
-class HoveringURL extends React.Component {
-  render() {
-    return (
-      <div style={this.props.style}>
-        {this.props.targetURL}
-      </div>
-    );
-  }
+function HoveringURL(props) {
+  return (
+    <div className='HoveringURL HoveringURL-left'>
+      {props.targetURL}
+    </div>
+  );
 }
 
 HoveringURL.propTypes = {
-  style: React.PropTypes.object,
-  targetURL: React.PropTypes.string
+  targetURL: PropTypes.string,
 };
 
 module.exports = HoveringURL;

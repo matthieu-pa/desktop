@@ -2,9 +2,50 @@
 
 const electron = require('electron');
 const ipc = electron.ipcRenderer;
-const notification = require('../js/notification');
+const webFrame = electron.webFrame;
+
+const EnhancedNotification = require('../js/notification');
+
+const UNREAD_COUNT_INTERVAL = 1000;
+
+Notification = EnhancedNotification; // eslint-disable-line no-global-assign, no-native-reassign
 
 Reflect.deleteProperty(global.Buffer); // http://electron.atom.io/docs/tutorial/security/#buffer-global
+
+function isReactAppInitialized() {
+  const initializedRoot =
+    document.querySelector('#root.channel-view') || // React 16 webapp
+    document.querySelector('#root .signup-team__container') || // React 16 login
+    document.querySelector('div[data-reactroot]'); // Older React apps
+  if (initializedRoot === null) {
+    return false;
+  }
+  return initializedRoot.children.length !== 0;
+}
+
+function watchReactAppUntilInitialized(callback) {
+  let count = 0;
+  const interval = 500;
+  const timeout = 30000;
+  const timer = setInterval(() => {
+    count += interval;
+    if (isReactAppInitialized() || count >= timeout) { // assumed as webapp has been initialized.
+      clearTimeout(timer);
+      callback();
+    }
+  }, interval);
+}
+
+window.addEventListener('load', () => {
+  if (document.getElementById('root') === null) {
+    console.log('The guest is not assumed as mattermost-webapp');
+    ipc.sendToHost('onGuestInitialized');
+    return;
+  }
+  watchReactAppUntilInitialized(() => {
+    ipc.sendToHost('onGuestInitialized');
+  });
+});
 
 function hasClass(element, className) {
   var rclass = /[\t\r\n\f]/g;
@@ -14,7 +55,7 @@ function hasClass(element, className) {
   return false;
 }
 
-setInterval(function getUnreadCount() {
+function getUnreadCount() {
   if (!this.unreadCount) {
     this.unreadCount = 0;
   }
@@ -27,6 +68,7 @@ setInterval(function getUnreadCount() {
     ipc.sendToHost('onUnreadCountChange', 0, 0, false, false);
     this.unreadCount = 0;
     this.mentionCount = 0;
+    setTimeout(getUnreadCount, UNREAD_COUNT_INTERVAL);
     return;
   }
 
@@ -60,6 +102,7 @@ setInterval(function getUnreadCount() {
     // find active post-list.
     var postLists = document.querySelectorAll('div.post-list__content');
     if (postLists.length === 0) {
+      setTimeout(getUnreadCount, UNREAD_COUNT_INTERVAL);
       return;
     }
     var post = null;
@@ -69,6 +112,7 @@ setInterval(function getUnreadCount() {
       }
     }
     if (post === null) {
+      setTimeout(getUnreadCount, UNREAD_COUNT_INTERVAL);
       return;
     }
 
@@ -110,39 +154,34 @@ setInterval(function getUnreadCount() {
   }
   this.unreadCount = unreadCount;
   this.mentionCount = mentionCount;
-}, 1000);
+  setTimeout(getUnreadCount, UNREAD_COUNT_INTERVAL);
+}
+setTimeout(getUnreadCount, UNREAD_COUNT_INTERVAL);
 
 function isElementVisible(elem) {
   return elem.offsetHeight !== 0;
 }
 
-notification.override({
-
-  // Send a notification event to the main process.
-  notification(title, options) {
-    ipc.send('notified', {
-      title,
-      options
-    });
-  },
-
-  // Show window even if it is hidden/minimized when notification is clicked.
-  onclick() {
-    const currentWindow = electron.remote.getCurrentWindow();
-    if (process.platform === 'win32') {
-      // show() breaks Aero Snap state.
-      if (currentWindow.isVisible()) {
-        currentWindow.focus();
-      } else if (currentWindow.isMinimized()) {
-        currentWindow.restore();
-      } else {
-        currentWindow.show();
-      }
-    } else if (currentWindow.isMinimized()) {
-      currentWindow.restore();
-    } else {
-      currentWindow.show();
+function resetMisspelledState() {
+  ipc.once('spellchecker-is-ready', () => {
+    const element = document.activeElement;
+    if (element) {
+      element.blur();
+      element.focus();
     }
-    ipc.sendToHost('onNotificationClick');
-  }
-});
+  });
+  ipc.send('reply-on-spellchecker-is-ready');
+}
+
+function setSpellChecker() {
+  const spellCheckerLocale = ipc.sendSync('get-spellchecker-locale');
+  webFrame.setSpellCheckProvider(spellCheckerLocale, false, {
+    spellCheck(text) {
+      const res = ipc.sendSync('checkspell', text);
+      return res === null ? true : res;
+    },
+  });
+  resetMisspelledState();
+}
+setSpellChecker();
+ipc.on('set-spellcheker', setSpellChecker);

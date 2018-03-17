@@ -1,4 +1,5 @@
 const React = require('react');
+const PropTypes = require('prop-types');
 const {Modal, Button, FormGroup, FormControl, ControlLabel, HelpBlock} = require('react-bootstrap');
 
 class NewTeamModal extends React.Component {
@@ -9,7 +10,7 @@ class NewTeamModal extends React.Component {
     this.state = {
       teamName: '',
       teamUrl: '',
-      saveStarted: false
+      saveStarted: false,
     };
   }
 
@@ -18,12 +19,12 @@ class NewTeamModal extends React.Component {
   }
 
   initializeOnShow() {
-    this.state = {
+    this.setState({
       teamName: this.props.team ? this.props.team.name : '',
       teamUrl: this.props.team ? this.props.team.url : '',
       teamIndex: this.props.team ? this.props.team.index : false,
-      saveStarted: false
-    };
+      saveStarted: false,
+    });
   }
 
   getTeamNameValidationError() {
@@ -39,7 +40,7 @@ class NewTeamModal extends React.Component {
 
   handleTeamNameChange(e) {
     this.setState({
-      teamName: e.target.value
+      teamName: e.target.value,
     });
   }
 
@@ -62,7 +63,7 @@ class NewTeamModal extends React.Component {
 
   handleTeamUrlChange(e) {
     this.setState({
-      teamUrl: e.target.value
+      teamUrl: e.target.value,
     });
   }
 
@@ -77,13 +78,13 @@ class NewTeamModal extends React.Component {
 
   save() {
     this.setState({
-      saveStarted: true
+      saveStarted: true,
     }, () => {
       if (this.validateForm()) {
         this.props.onSave({
           url: this.state.teamUrl,
           name: this.state.teamName,
-          index: this.state.teamIndex
+          index: this.state.teamIndex,
         });
       }
     });
@@ -104,11 +105,6 @@ class NewTeamModal extends React.Component {
   }
 
   render() {
-    const noBottomSpaceing = {
-      'padding-bottom': 0,
-      'margin-bottom': 0
-    };
-
     if (this.wasShown !== this.props.show && this.props.show) {
       this.initializeOnShow();
     }
@@ -116,6 +112,8 @@ class NewTeamModal extends React.Component {
 
     return (
       <Modal
+        bsClass='modal'
+        className='NewTeamModal'
         show={this.props.show}
         id='newServerModal'
         onHide={this.props.onClose}
@@ -155,8 +153,8 @@ class NewTeamModal extends React.Component {
               <HelpBlock>{'The name of the server displayed on your desktop app tab bar.'}</HelpBlock>
             </FormGroup>
             <FormGroup
+              className='NewTeamModal-noBottomSpace'
               validationState={this.getTeamUrlValidationState()}
-              style={noBottomSpaceing}
             >
               <ControlLabel>{'Server URL'}</ControlLabel>
               <FormControl
@@ -167,9 +165,7 @@ class NewTeamModal extends React.Component {
                 onChange={this.handleTeamUrlChange.bind(this)}
               />
               <FormControl.Feedback/>
-              <HelpBlock
-                style={noBottomSpaceing}
-              >{'The URL of your Mattermost server. Must start with http:// or https://.'}</HelpBlock>
+              <HelpBlock className='NewTeamModal-noBottomSpace'>{'The URL of your Mattermost server. Must start with http:// or https://.'}</HelpBlock>
             </FormGroup>
           </form>
         </Modal.Body>
@@ -199,11 +195,11 @@ class NewTeamModal extends React.Component {
 }
 
 NewTeamModal.propTypes = {
-  onClose: React.PropTypes.func,
-  onSave: React.PropTypes.func,
-  team: React.PropTypes.object,
-  editMode: React.PropTypes.boolean,
-  show: React.PropTypes.boolean
+  onClose: PropTypes.func,
+  onSave: PropTypes.func,
+  team: PropTypes.object,
+  editMode: PropTypes.bool,
+  show: PropTypes.bool,
 };
 
 module.exports = NewTeamModal;

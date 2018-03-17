@@ -1,28 +1,59 @@
-const React = require('react');
-const {findDOMNode} = require('react-dom');
-const {ipcRenderer, shell} = require('electron');
-const fs = require('fs');
+/* eslint-disable react/no-set-state */
+// setState() is necessary for this component
 const url = require('url');
-const osLocale = require('os-locale');
-const electronContextMenu = require('electron-context-menu');
+
+const React = require('react');
+const PropTypes = require('prop-types');
+const createReactClass = require('create-react-class');
+const {findDOMNode} = require('react-dom');
+const {ipcRenderer, remote, shell} = require('electron');
+
+const contextMenu = require('../js/contextMenu');
+const {protocols} = require('../../../electron-builder.json');
+const scheme = protocols[0].schemes[0];
 
 const ErrorView = require('./ErrorView.jsx');
 
-const MattermostView = React.createClass({
+const preloadJS = `file://${remote.app.getAppPath()}/browser/webview/mattermost_bundle.js`;
+
+function extractFileURL(message) {
+  const matched = message.match(/Not allowed to load local resource:\s*(.+)/);
+  if (matched) {
+    return matched[1];
+  }
+  return '';
+}
+
+function isNetworkDrive(fileURL) {
+  const u = url.parse(fileURL);
+  if (u.protocol === 'file:' && u.host) {
+    // Disallow localhost, 127.0.0.1, ::1.
+    if (!u.host.match(/^localhost$|^127\.0\.0\.1$|^\[::1\]$/)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const MattermostView = createReactClass({
   propTypes: {
-    disablewebsecurity: React.PropTypes.bool,
-    name: React.PropTypes.string,
-    id: React.PropTypes.string,
-    onTargetURLChange: React.PropTypes.func,
-    onUnreadCountChange: React.PropTypes.func,
-    src: React.PropTypes.string,
-    style: React.PropTypes.object
+    name: PropTypes.string,
+    id: PropTypes.string,
+    onTargetURLChange: PropTypes.func,
+    onUnreadCountChange: PropTypes.func,
+    src: PropTypes.string,
+    active: PropTypes.bool,
+    withTab: PropTypes.bool,
+    useSpellChecker: PropTypes.bool,
+    onSelectSpellCheckerLocale: PropTypes.func,
   },
 
   getInitialState() {
     return {
       errorInfo: null,
-      isContextMenuAdded: false
+      isContextMenuAdded: false,
+      reloadTimeoutID: null,
+      isLoaded: false,
     };
   },
 
@@ -36,12 +67,6 @@ const MattermostView = React.createClass({
     var self = this;
     var webview = findDOMNode(this.refs.webview);
 
-    // This option allows insecure content, when set to true it is possible to
-    // load content via HTTP while the mattermost server serves HTTPS
-    if (this.props.disablewebsecurity === true) {
-      webview.setAttribute('webpreferences', 'allowDisplayingInsecureContent');
-    }
-
     webview.addEventListener('did-fail-load', (e) => {
       console.log(self.props.name, 'webview did-fail-load', e);
       if (e.errorCode === -3) { // An operation was aborted (due to user action).
@@ -49,14 +74,17 @@ const MattermostView = React.createClass({
       }
 
       self.setState({
-        errorInfo: e
+        errorInfo: e,
+        isLoaded: true,
       });
       function reload() {
         window.removeEventListener('online', reload);
         self.reload();
       }
       if (navigator.onLine) {
-        setTimeout(reload, 30000);
+        self.setState({
+          reloadTimeoutID: setTimeout(reload, 30000),
+        });
       } else {
         window.addEventListener('online', reload);
       }
@@ -66,13 +94,18 @@ const MattermostView = React.createClass({
     webview.addEventListener('new-window', (e) => {
       var currentURL = url.parse(webview.getURL());
       var destURL = url.parse(e.url);
-      if (destURL.protocol !== 'http:' && destURL.protocol !== 'https:') {
+      if (destURL.protocol !== 'http:' && destURL.protocol !== 'https:' && destURL.protocol !== `${scheme}:`) {
         ipcRenderer.send('confirm-protocol', destURL.protocol, e.url);
         return;
       }
+
       if (currentURL.host === destURL.host) {
-        // New window should disable nodeIntergration.
-        window.open(e.url, 'Mattermost', 'nodeIntegration=no, show=yes');
+        if (destURL.path.match(/^\/api\/v[3-4]\/public\/files\//)) {
+          ipcRenderer.send('download-url', e.url);
+        } else {
+          // New window should disable nodeIntergration.
+          window.open(e.url, remote.app.getName(), 'nodeIntegration=no, show=yes');
+        }
       } else {
         // if the link is external, use default browser.
         shell.openExternal(e.url);
@@ -84,28 +117,15 @@ const MattermostView = React.createClass({
     webview.addEventListener('dom-ready', () => {
       // webview.openDevTools();
 
-      // Use 'Meiryo UI' and 'MS Gothic' to prevent CJK fonts on Windows(JP).
-      if (process.platform === 'win32') {
-        function applyCssFile(cssFile) {
-          fs.readFile(cssFile, 'utf8', (err, data) => {
-            if (err) {
-              console.log(err);
-              return;
-            }
-            webview.insertCSS(data);
-          });
-        }
-
-        osLocale().then((locale) => {
-          if (locale === 'ja_JP') {
-            applyCssFile(__dirname + '/css/jp_fonts.css');
-          }
-        });
-      }
-
       if (!this.state.isContextMenuAdded) {
-        electronContextMenu({
-          window: webview
+        contextMenu.setup(webview, {
+          useSpellChecker: this.props.useSpellChecker,
+          onSelectSpellCheckerLocale: (locale) => {
+            if (this.props.onSelectSpellCheckerLocale) {
+              this.props.onSelectSpellCheckerLocale(locale);
+            }
+            webview.send('set-spellcheker');
+          },
         });
         this.setState({isContextMenuAdded: true});
       }
@@ -119,6 +139,11 @@ const MattermostView = React.createClass({
 
     webview.addEventListener('ipc-message', (event) => {
       switch (event.channel) {
+      case 'onGuestInitialized':
+        self.setState({
+          isLoaded: true,
+        });
+        break;
       case 'onUnreadCountChange':
         var unreadCount = event.args[0];
         var mentionCount = event.args[1];
@@ -137,7 +162,7 @@ const MattermostView = React.createClass({
     webview.addEventListener('page-title-updated', (event) => {
       if (self.props.active) {
         ipcRenderer.send('update-title', {
-          title: event.title
+          title: event.title,
         });
       }
     });
@@ -151,9 +176,19 @@ const MattermostView = React.createClass({
       case 1:
         console.warn(message);
         break;
-      case 2:
-        console.error(message);
+      case 2: {
+        const fileURL = extractFileURL(e.message);
+        if (isNetworkDrive(fileURL)) {
+          // Network drive: Should be allowed.
+          if (!shell.openExternal(decodeURI(fileURL))) {
+            console.log(`[${this.props.name}] shell.openExternal failed: ${fileURL}`);
+          }
+        } else {
+          // Local drive such as 'C:\Windows': Should not be allowed.
+          console.error(message);
+        }
         break;
+      }
       default:
         console.log(message);
         break;
@@ -162,8 +197,11 @@ const MattermostView = React.createClass({
   },
 
   reload() {
+    clearTimeout(this.state.reloadTimeoutID);
     this.setState({
-      errorInfo: null
+      errorInfo: null,
+      reloadTimeoutID: null,
+      isLoaded: false,
     });
     var webview = findDOMNode(this.refs.webview);
     webview.reload();
@@ -171,7 +209,7 @@ const MattermostView = React.createClass({
 
   clearCacheAndReload() {
     this.setState({
-      errorInfo: null
+      errorInfo: null,
     });
     var webContents = findDOMNode(this.refs.webview).getWebContents();
     webContents.session.clearCache(() => {
@@ -207,34 +245,63 @@ const MattermostView = React.createClass({
     webview.getWebContents().goForward();
   },
 
+  getSrc() {
+    const webview = findDOMNode(this.refs.webview);
+    return webview.src;
+  },
+
+  handleDeepLink(relativeUrl) {
+    const webview = findDOMNode(this.refs.webview);
+    webview.executeJavaScript(
+      'history.pushState(null, null, "' + relativeUrl + '");'
+    );
+    webview.executeJavaScript(
+      'dispatchEvent(new PopStateEvent("popstate", null));'
+    );
+  },
+
   render() {
     const errorView = this.state.errorInfo ? (
       <ErrorView
         id={this.props.id + '-fail'}
-        style={this.props.style}
         className='errorView'
         errorInfo={this.state.errorInfo}
+        active={this.props.active}
+        withTab={this.props.withTab}
       />) : null;
 
-    // 'disablewebsecurity' is necessary to display external images.
-    // However, it allows also CSS/JavaScript.
-    // So webview should use 'allowDisplayingInsecureContent' as same as BrowserWindow.
-
     // Need to keep webview mounted when failed to load.
+    const classNames = ['mattermostView'];
+    if (this.props.withTab) {
+      classNames.push('mattermostView-with-tab');
+    }
+    if (!this.props.active || this.state.errorInfo) {
+      classNames.push('mattermostView-hidden');
+    }
+
+    const loadingImage = !this.state.errorInfo && this.props.active && !this.state.isLoaded ? (
+      <div className='mattermostView-loadingScreen'>
+        <img
+          className='mattermostView-loadingImage'
+          src='../assets/loading.gif'
+        />
+      </div>
+    ) : null;
+
     return (
-      <div>
+      <div
+        className={classNames.join(' ')}
+      >
         { errorView }
         <webview
           id={this.props.id}
-          className='mattermostView'
-          style={this.props.style}
-          preload='webview/mattermost.js'
+          preload={preloadJS}
           src={this.props.src}
           ref='webview'
-          nodeintegration='false'
         />
+        { loadingImage }
       </div>);
-  }
+  },
 });
 
 module.exports = MattermostView;

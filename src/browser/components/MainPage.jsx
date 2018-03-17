@@ -1,57 +1,55 @@
+const url = require('url');
+
 const React = require('react');
-const ReactCSSTransitionGroup = require('react-addons-css-transition-group');
+const PropTypes = require('prop-types');
+const createReactClass = require('create-react-class');
+const {CSSTransition, TransitionGroup} = require('react-transition-group');
 const {Grid, Row} = require('react-bootstrap');
 
 const {ipcRenderer, remote} = require('electron');
-const url = require('url');
+
+const Utils = require('../../utils/util.js');
 
 const LoginModal = require('./LoginModal.jsx');
 const MattermostView = require('./MattermostView.jsx');
 const TabBar = require('./TabBar.jsx');
 const HoveringURL = require('./HoveringURL.jsx');
+const PermissionRequestDialog = require('./PermissionRequestDialog.jsx');
 
 const NewTeamModal = require('./NewTeamModal.jsx');
 
-// Todo: Need to consider better way to apply styles
-const styles = {
-  hoveringURL: {
-    color: 'gray',
-    backgroundColor: 'whitesmoke',
-    maxWidth: '95%',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    position: 'absolute',
-    bottom: 0,
-    paddingLeft: 4,
-    paddingRight: 16,
-    paddingTop: 2,
-    paddingBottom: 2,
-    borderTopRightRadius: 4,
-    borderTop: 'solid thin lightgray',
-    borderRight: 'solid thin lightgray',
-    pointerEvents: 'none'
-  }
-};
-
-const MainPage = React.createClass({
+const MainPage = createReactClass({
   propTypes: {
-    disablewebsecurity: React.PropTypes.bool.isRequired,
-    onUnreadCountChange: React.PropTypes.func.isRequired,
-    teams: React.PropTypes.array.isRequired,
-    onTeamConfigChange: React.PropTypes.func.isRequired,
-    initialIndex: React.PropTypes.number.isRequired
+    onUnreadCountChange: PropTypes.func.isRequired,
+    teams: PropTypes.array.isRequired,
+    onTeamConfigChange: PropTypes.func.isRequired,
+    initialIndex: PropTypes.number.isRequired,
+    useSpellChecker: PropTypes.bool.isRequired,
+    onSelectSpellCheckerLocale: PropTypes.func.isRequired,
+    deeplinkingUrl: PropTypes.string,
+    showAddServerButton: PropTypes.bool.isRequired,
+    requestingPermission: TabBar.propTypes.requestingPermission,
+    onClickPermissionDialog: PropTypes.func,
   },
 
   getInitialState() {
+    let key = this.props.initialIndex;
+    if (this.props.deeplinkingUrl !== null) {
+      for (var i = 0; i < this.props.teams.length; i++) {
+        if (this.props.deeplinkingUrl.includes(this.props.teams[i].url)) {
+          key = i;
+          break;
+        }
+      }
+    }
     return {
-      key: this.props.initialIndex,
+      key,
       unreadCounts: new Array(this.props.teams.length),
       mentionCounts: new Array(this.props.teams.length),
       unreadAtActive: new Array(this.props.teams.length),
       mentionAtActiveCounts: new Array(this.props.teams.length),
       loginQueue: [],
-      targetURL: ''
+      targetURL: '',
     };
   },
   componentDidMount() {
@@ -59,15 +57,15 @@ const MainPage = React.createClass({
     ipcRenderer.on('login-request', (event, request, authInfo) => {
       self.setState({
         // below line set to false doesnt break anything
-        loginRequired: true
+        loginRequired: true,
       });
       const loginQueue = self.state.loginQueue;
       loginQueue.push({
         request,
-        authInfo
+        authInfo,
       });
       self.setState({
-        loginQueue
+        loginQueue,
       });
     });
 
@@ -88,18 +86,6 @@ const MainPage = React.createClass({
     });
     ipcRenderer.on('clear-cache-and-reload-tab', () => {
       this.refs[`mattermostView${this.state.key}`].clearCacheAndReload();
-    });
-
-    // activate search box in current tab
-    ipcRenderer.on('activate-search-box', () => {
-      const webview = document.getElementById('mattermostView' + self.state.key);
-      webview.send('activate-search-box');
-    });
-
-    // activate search box in current chunnel
-    ipcRenderer.on('activate-search-box-in-channel', () => {
-      const webview = document.getElementById('mattermostView' + self.state.key);
-      webview.send('activate-search-box-in-channel');
     });
 
     function focusListener() {
@@ -136,6 +122,23 @@ const MainPage = React.createClass({
     ipcRenderer.on('add-server', () => {
       this.addServer();
     });
+
+    ipcRenderer.on('focus-on-webview', () => {
+      this.focusOnWebView();
+    });
+
+    ipcRenderer.on('protocol-deeplink', (event, deepLinkUrl) => {
+      const lastUrlDomain = Utils.getDomain(deepLinkUrl);
+      for (var i = 0; i < this.props.teams.length; i++) {
+        if (lastUrlDomain === Utils.getDomain(self.refs[`mattermostView${i}`].getSrc())) {
+          if (this.state.key !== i) {
+            this.handleSelect(i);
+          }
+          self.refs[`mattermostView${i}`].handleDeepLink(deepLinkUrl.replace(lastUrlDomain, ''));
+          break;
+        }
+      }
+    });
   },
   componentDidUpdate(prevProps, prevState) {
     if (prevState.key !== this.state.key) { // i.e. When tab has been changed
@@ -145,13 +148,13 @@ const MainPage = React.createClass({
   handleSelect(key) {
     const newKey = (this.props.teams.length + key) % this.props.teams.length;
     this.setState({
-      key: newKey
+      key: newKey,
     });
     this.handleOnTeamFocused(newKey);
 
     var webview = document.getElementById('mattermostView' + newKey);
     ipcRenderer.send('update-title', {
-      title: webview.getTitle()
+      title: webview.getTitle(),
     });
   },
   handleUnreadCountChange(index, unreadCount, mentionCount, isUnread, isMentioned) {
@@ -173,7 +176,7 @@ const MainPage = React.createClass({
       unreadCounts,
       mentionCounts,
       unreadAtActive,
-      mentionAtActiveCounts
+      mentionAtActiveCounts,
     });
     this.handleUnreadCountTotalChange();
   },
@@ -184,7 +187,7 @@ const MainPage = React.createClass({
     mentionAtActiveCounts[index] = 0;
     this.setState({
       unreadAtActive,
-      mentionAtActiveCounts
+      mentionAtActiveCounts,
     });
     this.handleUnreadCountTotalChange();
   },
@@ -210,18 +213,6 @@ const MainPage = React.createClass({
   handleOnTeamFocused(index) {
     // Turn off the flag to indicate whether unread message of active channel contains at current tab.
     this.markReadAtActive(index);
-  },
-
-  visibleStyle(visible) {
-    var visibility = visible ? 'visible' : 'hidden';
-    return {
-      position: 'absolute',
-      top: (this.props.teams.length > 1) ? 42 : 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      visibility
-    };
   },
 
   handleLogin(request, username, password) {
@@ -250,9 +241,14 @@ const MainPage = React.createClass({
   },
   addServer() {
     this.setState({
-      showNewTeamModal: true
+      showNewTeamModal: true,
     });
   },
+
+  focusOnWebView() {
+    this.refs[`mattermostView${this.state.key}`].focusOnWebView();
+  },
+
   render() {
     var self = this;
 
@@ -270,6 +266,9 @@ const MainPage = React.createClass({
             activeKey={this.state.key}
             onSelect={this.handleSelect}
             onAddServer={this.addServer}
+            showAddServerButton={this.props.showAddServerButton}
+            requestingPermission={this.props.requestingPermission}
+            onClickPermissionDialog={this.props.onClickPermissionDialog}
           />
         </Row>
       );
@@ -284,14 +283,22 @@ const MainPage = React.createClass({
       }
       var id = 'mattermostView' + index;
       var isActive = self.state.key === index;
+
+      let teamUrl = team.url;
+      const deeplinkingUrl = this.props.deeplinkingUrl;
+      if (deeplinkingUrl !== null && deeplinkingUrl.includes(teamUrl)) {
+        teamUrl = deeplinkingUrl;
+      }
+
       return (
         <MattermostView
           key={id}
           id={id}
-          style={self.visibleStyle(isActive)}
-          src={team.url}
+          withTab={this.props.teams.length > 1}
+          useSpellChecker={this.props.useSpellChecker}
+          onSelectSpellCheckerLocale={this.props.onSelectSpellCheckerLocale}
+          src={teamUrl}
           name={team.name}
-          disablewebsecurity={this.props.disablewebsecurity}
           onTargetURLChange={self.handleTargetURLChange}
           onUnreadCountChange={handleUnreadCountChange}
           onNotificationClick={handleNotificationClick}
@@ -324,14 +331,14 @@ const MainPage = React.createClass({
         show={this.state.showNewTeamModal}
         onClose={() => {
           this.setState({
-            showNewTeamModal: false
+            showNewTeamModal: false,
           });
         }}
         onSave={(newTeam) => {
           this.props.teams.push(newTeam);
           this.setState({
             showNewTeamModal: false,
-            key: this.props.teams.length - 1
+            key: this.props.teams.length - 1,
           });
           this.render();
           this.props.onTeamConfigChange(this.props.teams);
@@ -339,8 +346,11 @@ const MainPage = React.createClass({
       />
     );
     return (
-      <div>
-        {/*the place to remove the window to ask for login*/}
+      <div
+        className='MainPage'
+        onClick={this.focusOnWebView}
+      >
+      {/*the place to remove the window to ask for login*/}
         <LoginModal
           show={this.state.loginQueue.length !== 0}
           request={request}
@@ -349,29 +359,40 @@ const MainPage = React.createClass({
           onLogin={this.handleLogin}
           onCancel={this.handleLoginCancel}
         />
+        {this.props.teams.length === 1 && this.props.requestingPermission[0] ? // eslint-disable-line multiline-ternary
+          <PermissionRequestDialog
+            id='MainPage-permissionDialog'
+            placement='bottom'
+            {...this.props.requestingPermission[0]}
+            onClickAllow={this.props.onClickPermissionDialog.bind(null, 0, 'allow')}
+            onClickBlock={this.props.onClickPermissionDialog.bind(null, 0, 'block')}
+            onClickClose={this.props.onClickPermissionDialog.bind(null, 0, 'close')}
+          /> : null
+        }
         <Grid fluid={true}>
           { tabsRow }
           { viewsRow }
         </Grid>
-        <ReactCSSTransitionGroup
-          transitionName='hovering'
-          transitionEnterTimeout={300}
-          transitionLeaveTimeout={500}
-        >
+        <TransitionGroup>
           { (this.state.targetURL === '') ?
             null :
-            <HoveringURL
-              key='hoveringURL'
-              style={styles.hoveringURL}
-              targetURL={this.state.targetURL}
-            /> }
-        </ReactCSSTransitionGroup>
+            <CSSTransition
+              classNames='hovering'
+              timeout={{enter: 300, exit: 500}}
+            >
+              <HoveringURL
+                key='hoveringURL'
+                targetURL={this.state.targetURL}
+              />
+            </CSSTransition>
+          }
+        </TransitionGroup>
         <div>
           { modal }
         </div>
       </div>
     );
-  }
+  },
 });
 
 module.exports = MainPage;

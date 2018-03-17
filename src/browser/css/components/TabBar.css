@@ -1,0 +1,43 @@
+.TabBar>li>a {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 2px 2px 0 0;
+  border: 1px solid #ddd;
+  color: #888;
+  height: 31px;
+  line-height: 29px;
+  margin-right: -1px;
+  margin-top: 0px;
+  padding: 0 15px;
+}
+
+.TabBar .TabBar-addServerButton>a {
+  border: none;
+  background: transparent;
+  color: #999;
+  font-size: 10px;
+  line-height: 31px;
+}
+
+.TabBar .TabBar-addServerButton>a:hover {
+  color: #333;
+  background-color: #e6e6e6;
+  border-color: #adadad;
+}
+
+.TabBar .TabBar-badge {
+  background: #FF1744;
+  float: right;
+  color: white;
+  min-width: 19px;
+  font-size: 12px;
+  text-align: center;
+  line-height: 20px;
+  height: 19px;
+  margin-left: 5px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.TabBar .teamTabItem-label {
+  font-weight: bold;
+}

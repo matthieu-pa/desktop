@@ -1,5 +1,6 @@
-const settings = require('../../common/settings');
 const {remote} = require('electron');
+
+const settings = require('../../common/settings');
 
 class AppConfig {
   constructor(file) {
@@ -8,7 +9,7 @@ class AppConfig {
       this.data = settings.readFileSync(file);
     } catch (e) {
       this.data = {
-        teams: []
+        teams: [],
       };
     }
   }

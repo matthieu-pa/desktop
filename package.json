@@ -1,13 +1,10 @@
 {
   "name": "mattermost-desktop",
   "productName": "Mattermost",
-  "version": "3.6.0",
+  "version": "4.0.0",
   "description": "Mattermost",
   "main": "main.js",
-  "author": {
-    "name": "Yuya Ochiai",
-    "email": "yuya0321@gmail.com"
-  },
+  "author": "Mattermost, Inc. <feedback@mattermost.com>",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=4.2.0"
@@ -17,92 +14,55 @@
     "url": "git://github.com/mattermost/desktop.git"
   },
   "scripts": {
-    "install": "cd src && npm install",
-    "postinstall": "npm run build",
+    "postinstall": "install-app-deps && npm run extract-dict",
+    "extract-dict": "node scripts/extract_dict.js src/node_modules/simple-spellchecker/dict",
     "build": "npm-run-all build:*",
-    "build:main": "cross-env NODE_ENV=production webpack --bail --config webpack.config.main.js",
-    "build:renderer": "cross-env NODE_ENV=production webpack --bail --config webpack.config.renderer.js",
-    "build:others": "gulp build",
-    "start": "electron dist",
-    "watch": "gulp watch",
-    "serve": "gulp watch",
-    "test": "npm-run-all build test:* lint:*",
-    "test:app": "mocha --reporter mocha-circleci-reporter --recursive test/specs",
-    "package:all": "npm-run-all package:windows package:mac package:linux",
-    "package:windows": "build --win --x64 --ia32 --em.name=mattermost && npm run manipulate-windows-zip",
-    "package:mac": "build --mac",
-    "package:linux": "build --linux --x64 --ia32 --em.name=mattermost-desktop",
+    "build:main": "webpack --bail --config webpack.config.main.js",
+    "build:renderer": "webpack --bail --config webpack.config.renderer.js",
+    "start": "electron src --disable-dev-mode",
+    "clean": "rm -rf release/ node_modules/ src/node_modules/ && find src -name '*_bundle.js' | xargs rm",
+    "watch": "run-p watch:*",
+    "watch:main": "node scripts/watch_main_and_preload.js",
+    "watch:renderer": "webpack-dev-server --config webpack.config.renderer.js",
+    "test": "npm-run-all test:* lint:*",
+    "test:app": "npm run build && mocha --reporter mocha-circleci-reporter --recursive test/specs",
+    "package:all": "cross-env NODE_ENV=production npm-run-all check-build-config package:windows package:mac package:linux",
+    "package:windows": "cross-env NODE_ENV=production npm-run-all check-build-config build && build --win --x64 --ia32 --em.name=mattermost --publish=never && npm run manipulate-windows-zip",
+    "package:mac": "cross-env NODE_ENV=production npm-run-all check-build-config build && build --mac --publish=never",
+    "package:linux": "cross-env NODE_ENV=production npm-run-all check-build-config build && build --linux --x64 --ia32 --em.name=mattermost-desktop --publish=never",
     "manipulate-windows-zip": "node scripts/manipulate_windows_zip.js",
-    "lint:js": "eslint --ext .js --ext .jsx ."
+    "lint:js": "eslint --ignore-path .gitignore --ignore-pattern node_modules --ext .js --ext .jsx .",
+    "fix:js": "eslint --ignore-path .gitignore --ignore-pattern node_modules --quiet --ext .js --ext .jsx . --fix",
+    "check-build-config": "node scripts/check_build_config.js"
   },
   "devDependencies": {
-    "7zip-bin": "^2.0.4",
-    "babel-core": "^6.21.0",
-    "babel-eslint": "^7.1.1",
-    "babel-loader": "^6.2.10",
-    "babel-plugin-transform-object-rest-spread": "^6.22.0",
-    "babel-preset-react": "^6.16.0",
-    "chai": "^3.5.0",
-    "chai-as-promised": "^6.0.0",
-    "cross-env": "^3.1.3",
+    "7zip-bin": "^2.4.1",
+    "babel-core": "^6.26.0",
+    "babel-eslint": "^8.2.1",
+    "babel-loader": "^7.1.2",
+    "babel-plugin-transform-object-rest-spread": "^6.26.0",
+    "babel-preset-env": "^1.6.1",
+    "babel-preset-react": "^6.24.1",
+    "chai": "^4.1.2",
+    "cross-env": "^5.1.3",
+    "css-loader": "^0.28.9",
     "devtron": "^1.4.0",
-    "electron": "1.4.13",
-    "electron-builder": "^10.9.2",
-    "electron-connect": "^0.6.1",
-    "eslint": "^3.12.2",
-    "eslint-plugin-react": "^6.8.0",
-    "gulp": "^3.9.1",
-    "gulp-diff": "^1.0.0",
-    "gulp-jsbeautifier": "^2.0.3",
-    "json-loader": "^0.5.4",
-    "mocha": "^3.2.0",
+    "electron": "1.8.2",
+    "electron-builder": "17.4.0",
+    "electron-builder-squirrel-windows": "17.4.0",
+    "electron-connect": "^0.6.3",
+    "eslint": "^4.18.0",
+    "eslint-plugin-import": "^2.8.0",
+    "eslint-plugin-react": "^7.7.0",
+    "file-loader": "^1.1.6",
+    "mocha": "^5.0.0",
     "mocha-circleci-reporter": "0.0.2",
-    "npm-run-all": "^3.1.2",
-    "spectron": "~3.4.1",
-    "webpack": "^1.14.0",
-    "webpack-merge": "^1.1.2"
-  },
-  "build": {
-    "appId": "com.mattermost.desktop",
-    "linux": {
-      "category": "InstantMessaging",
-      "target": [
-        "deb",
-        "tar.gz"
-      ],
-      "synopsis": "Mattermost",
-      "extraFiles": [
-        {
-          "from": "resources",
-          "filter": "icon.png"
-        },
-        {
-          "from": "resources/linux",
-          "filter": [
-            "create_desktop_file.sh",
-            "README.md"
-          ]
-        }
-      ]
-    },
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        "tar.gz"
-      ]
-    },
-    "win": {
-      "description": "Mattermost",
-      "target": [
-        "squirrel",
-        "zip"
-      ],
-      "iconUrl": "https://raw.githubusercontent.com/mattermost/desktop/master/resources/icon.ico"
-    }
-  },
-  "directories": {
-    "buildResources": "resources",
-    "app": "dist",
-    "output": "release"
+    "npm-run-all": "^4.1.2",
+    "spectron": "~3.8.0",
+    "style-loader": "^0.20.1",
+    "url-loader": "^0.6.2",
+    "webpack": "^3.10.0",
+    "webpack-dev-server": "^2.11.1",
+    "webpack-merge": "^4.1.1"
   }
 }

@@ -1,19 +1,22 @@
 const React = require('react');
+const PropTypes = require('prop-types');
+const createReactClass = require('create-react-class');
 const {ListGroup} = require('react-bootstrap');
+
 const TeamListItem = require('./TeamListItem.jsx');
 const NewTeamModal = require('./NewTeamModal.jsx');
 const RemoveServerModal = require('./RemoveServerModal.jsx');
 
-const TeamList = React.createClass({
+const TeamList = createReactClass({
   propTypes: {
-    onTeamsChange: React.PropTypes.func,
-    showAddTeamForm: React.PropTypes.bool,
-    teams: React.PropTypes.array,
-    addServer: React.PropTypes.func,
-    updateTeam: React.PropTypes.func,
-    toggleAddTeamForm: React.PropTypes.func,
-    setAddTeamFormVisibility: React.PropTypes.func,
-    onTeamClick: React.PropTypes.func
+    onTeamsChange: PropTypes.func,
+    showAddTeamForm: PropTypes.bool,
+    teams: PropTypes.array,
+    addServer: PropTypes.func,
+    updateTeam: PropTypes.func,
+    toggleAddTeamForm: PropTypes.func,
+    setAddTeamFormVisibility: PropTypes.func,
+    onTeamClick: PropTypes.func,
   },
 
   getInitialState() {
@@ -23,8 +26,8 @@ const TeamList = React.createClass({
       team: {
         url: '',
         name: '',
-        index: false
-      }
+        index: false,
+      },
     };
   },
   handleTeamRemove(index) {
@@ -49,8 +52,8 @@ const TeamList = React.createClass({
       team: {
         url: '',
         name: '',
-        index: false
-      }
+        index: false,
+      },
     });
 
     this.props.onTeamsChange(teams);
@@ -61,8 +64,8 @@ const TeamList = React.createClass({
       team: {
         url: teamUrl,
         name: teamName,
-        index: teamIndex
-      }
+        index: teamIndex,
+      },
     });
   },
 
@@ -78,10 +81,12 @@ const TeamList = React.createClass({
     var self = this;
     var teamNodes = this.props.teams.map((team, i) => {
       function handleTeamRemove() {
+        document.activeElement.blur();
         self.openServerRemoveModal(i);
       }
 
       function handleTeamEditing() {
+        document.activeElement.blur();
         self.handleTeamEditing(team.name, team.url, i);
       }
 
@@ -112,15 +117,15 @@ const TeamList = React.createClass({
             team: {
               name: '',
               url: '',
-              index: false
-            }
+              index: false,
+            },
           });
           this.props.setAddTeamFormVisibility(false);
         }}
         onSave={(newTeam) => {
           var teamData = {
             name: newTeam.name,
-            url: newTeam.url
+            url: newTeam.url,
           };
           if (this.props.showAddTeamForm) {
             this.props.addServer(teamData);
@@ -133,8 +138,8 @@ const TeamList = React.createClass({
             team: {
               name: '',
               url: '',
-              index: false
-            }
+              index: false,
+            },
           });
           this.render();
           this.props.setAddTeamFormVisibility(false);
@@ -163,7 +168,7 @@ const TeamList = React.createClass({
         { removeServerModal}
       </ListGroup>
     );
-  }
+  },
 });
 
 module.exports = TeamList;

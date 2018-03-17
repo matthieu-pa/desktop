@@ -1,0 +1,81 @@
+{
+  "appId": "com.mattermost.desktop",
+  "directories": {
+    "buildResources": "resources",
+    "app": "src",
+    "output": "release"
+  },
+  "files": [
+    "main_bundle.js",
+    "browser/**/*{.html,.css,_bundle.js}",
+    "assets/**/*",
+    "node_modules/bootstrap/dist/**",
+    "node_modules/simple-spellchecker/dict/*.dic"
+  ],
+  "protocols": [
+    {
+      "name": "Mattermost",
+      "schemes": ["mattermost"]
+    }
+  ],
+  "deb": {
+    "synopsis": "Mattermost"
+  },
+  "linux": {
+    "category": "InstantMessaging",
+    "target": [
+      "deb",
+      "tar.gz"
+    ],
+    "extraFiles": [
+      {
+        "filter": [
+          "LICENSE.txt",
+          "NOTICE.txt"
+        ]
+      },
+      {
+        "from": "resources",
+        "filter": "icon.png"
+      },
+      {
+        "from": "resources/linux",
+        "filter": [
+          "create_desktop_file.sh",
+          "README.md"
+        ]
+      }
+    ]
+  },
+  "mac": {
+    "category": "public.app-category.productivity",
+    "target": [
+      "tar.gz"
+    ],
+    "extraResources": [
+      {
+        "filter": [
+          "LICENSE.txt",
+          "NOTICE.txt"
+        ]
+      }
+    ]
+  },
+  "squirrelWindows": {
+    "iconUrl": "file://resources/icon.ico"
+  },
+  "win": {
+    "target": [
+      "squirrel",
+      "zip"
+    ],
+    "extraFiles": [
+      {
+        "filter": [
+          "LICENSE.txt",
+          "NOTICE.txt"
+        ]
+      }
+    ]
+  }
+}

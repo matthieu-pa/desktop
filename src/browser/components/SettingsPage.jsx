@@ -1,4 +1,6 @@
 const React = require('react');
+const PropTypes = require('prop-types');
+const createReactClass = require('create-react-class');
 const ReactDOM = require('react-dom');
 const {Button, Checkbox, Col, FormGroup, Grid, HelpBlock, Navbar, Radio, Row} = require('react-bootstrap');
 
@@ -6,24 +8,30 @@ const {ipcRenderer, remote} = require('electron');
 const AutoLaunch = require('auto-launch');
 const {debounce} = require('underscore');
 
+const buildConfig = require('../../common/config/buildConfig');
 const settings = require('../../common/settings');
 
 const TeamList = require('./TeamList.jsx');
 const AutoSaveIndicator = require('./AutoSaveIndicator.jsx');
 
 const appLauncher = new AutoLaunch({
-  name: 'Mattermost',
-  isHidden: true
+  name: remote.app.getName(),
+  isHidden: true,
 });
 
 function backToIndex(index) {
   const target = typeof index === 'undefined' ? 0 : index;
-  remote.getCurrentWindow().loadURL(`file://${__dirname}/index.html?index=${target}`);
+  const indexURL = remote.getGlobal('isDev') ? 'http://localhost:8080/browser/index.html' : `file://${remote.app.getAppPath()}/browser/index.html`;
+  remote.getCurrentWindow().loadURL(`${indexURL}?index=${target}`);
 }
 
-const SettingsPage = React.createClass({
+const CONFIG_TYPE_SERVERS = 'servers';
+const CONFIG_TYPE_APP_OPTIONS = 'appOptions';
+
+const SettingsPage = createReactClass({
   propTypes: {
-    configFile: React.PropTypes.string
+    configFile: PropTypes.string,
+    enableServerManagement: PropTypes.bool,
   },
 
   getInitialState() {
@@ -36,11 +44,13 @@ const SettingsPage = React.createClass({
 
     initialState.showAddTeamForm = false;
     initialState.trayWasVisible = remote.getCurrentWindow().trayWasVisible;
-    initialState.disableClose = initialState.teams.length === 0;
     if (initialState.teams.length === 0) {
       initialState.showAddTeamForm = true;
     }
-    initialState.savingState = 'done';
+    initialState.savingState = {
+      appOptions: AutoSaveIndicator.SAVING_STATE_DONE,
+      servers: AutoSaveIndicator.SAVING_STATE_DONE,
+    };
 
     return initialState;
   },
@@ -49,13 +59,13 @@ const SettingsPage = React.createClass({
       var self = this;
       appLauncher.isEnabled().then((enabled) => {
         self.setState({
-          autostart: enabled
+          autostart: enabled,
         });
       });
     }
     ipcRenderer.on('add-server', () => {
       this.setState({
-        showAddTeamForm: true
+        showAddTeamForm: true,
       });
     });
     ipcRenderer.on('switch-tab', (event, key) => {
@@ -63,42 +73,52 @@ const SettingsPage = React.createClass({
     });
   },
 
-  setSavingState(state) {
-    if (!this.setSavingStateSaved) {
-      this.setSavingStateSaved = debounce(() => {
+  startSaveConfig(configType) {
+    if (!this.startSaveConfigImpl) {
+      this.startSaveConfigImpl = {};
+    }
+    if (!this.startSaveConfigImpl[configType]) {
+      this.startSaveConfigImpl[configType] = debounce(() => {
         this.saveConfig((err) => {
           if (err) {
-            this.setState({savingState: 'error'});
-          } else {
-            this.setState({savingState: 'saved'});
+            console.error(err);
           }
-          this.setSavingStateDoneTimer = setTimeout(this.setState.bind(this, {savingState: 'done'}), 2000);
+          const savingState = Object.assign({}, this.state.savingState);
+          savingState[configType] = err ? AutoSaveIndicator.SAVING_STATE_ERROR : AutoSaveIndicator.SAVING_STATE_SAVED;
+          this.setState({savingState});
+          this.didSaveConfig(configType);
         });
       }, 500);
     }
-    if (this.setSavingStateDoneTimer) {
-      clearTimeout(this.setSavingStateDoneTimer);
-      this.setSavingStateDoneTimer = null;
-    }
-    this.setState({savingState: state});
-    if (state === 'saving') {
-      this.setSavingStateSaved();
-    }
+    const savingState = Object.assign({}, this.state.savingState);
+    savingState[configType] = AutoSaveIndicator.SAVING_STATE_SAVING;
+    this.setState({savingState});
+    this.startSaveConfigImpl[configType]();
   },
 
-  startSaveConfig() {
-    this.setSavingState('saving');
+  didSaveConfig(configType) {
+    if (!this.didSaveConfigImpl) {
+      this.didSaveConfigImpl = {};
+    }
+    if (!this.didSaveConfigImpl[configType]) {
+      this.didSaveConfigImpl[configType] = debounce(() => {
+        const savingState = Object.assign({}, this.state.savingState);
+        savingState[configType] = AutoSaveIndicator.SAVING_STATE_DONE;
+        this.setState({savingState});
+      }, 2000);
+    }
+    this.didSaveConfigImpl[configType]();
   },
 
   handleTeamsChange(teams) {
     this.setState({
       showAddTeamForm: false,
-      teams
+      teams,
     });
     if (teams.length === 0) {
       this.setState({showAddTeamForm: true});
     }
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_SERVERS);
   },
 
   saveConfig(callback) {
@@ -106,13 +126,16 @@ const SettingsPage = React.createClass({
       teams: this.state.teams,
       showTrayIcon: this.state.showTrayIcon,
       trayIconTheme: this.state.trayIconTheme,
-      disablewebsecurity: this.state.disablewebsecurity,
       version: settings.version,
       minimizeToTray: this.state.minimizeToTray,
       notifications: {
-        flashWindow: this.state.notifications.flashWindow
+        flashWindow: this.state.notifications.flashWindow,
+        bounceIcon: this.state.notifications.bounceIcon,
+        bounceIconType: this.state.notifications.bounceIconType,
       },
-      showUnreadBadge: this.state.showUnreadBadge
+      showUnreadBadge: this.state.showUnreadBadge,
+      useSpellChecker: this.state.useSpellChecker,
+      spellCheckerLocale: this.state.spellCheckerLocale,
     };
 
     settings.writeFile(this.props.configFile, config, (err) => {
@@ -150,90 +173,146 @@ const SettingsPage = React.createClass({
   handleCancel() {
     backToIndex();
   },
-  handleChangeDisableWebSecurity() {
-    this.setState({
-      disablewebsecurity: this.refs.disablewebsecurity.props.checked
-    });
-    setImmediate(this.startSaveConfig);
-  },
   handleChangeShowTrayIcon() {
     var shouldShowTrayIcon = !this.refs.showTrayIcon.props.checked;
     this.setState({
-      showTrayIcon: shouldShowTrayIcon
+      showTrayIcon: shouldShowTrayIcon,
     });
 
     if (process.platform === 'darwin' && !shouldShowTrayIcon) {
       this.setState({
-        minimizeToTray: false
+        minimizeToTray: false,
       });
     }
 
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
   },
   handleChangeTrayIconTheme() {
     this.setState({
-      trayIconTheme: ReactDOM.findDOMNode(this.refs.trayIconTheme).value
+      trayIconTheme: ReactDOM.findDOMNode(this.refs.trayIconTheme).value,
     });
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
   },
   handleChangeAutoStart() {
     this.setState({
-      autostart: !this.refs.autostart.props.checked
+      autostart: !this.refs.autostart.props.checked,
     });
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
   },
   handleChangeMinimizeToTray() {
     const shouldMinimizeToTray = this.state.showTrayIcon && !this.refs.minimizeToTray.props.checked;
 
     this.setState({
-      minimizeToTray: shouldMinimizeToTray
+      minimizeToTray: shouldMinimizeToTray,
     });
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
   },
   toggleShowTeamForm() {
     this.setState({
-      showAddTeamForm: !this.state.showAddTeamForm
+      showAddTeamForm: !this.state.showAddTeamForm,
     });
+    document.activeElement.blur();
   },
   setShowTeamFormVisibility(val) {
     this.setState({
-      showAddTeamForm: val
+      showAddTeamForm: val,
     });
   },
   handleFlashWindow() {
     this.setState({
       notifications: {
-        flashWindow: this.refs.flashWindow.props.checked ? 0 : 2
-      }
+        ...this.state.notifications,
+        flashWindow: this.refs.flashWindow.props.checked ? 0 : 2,
+      },
     });
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
+  },
+  handleBounceIcon() {
+    this.setState({
+      notifications: {
+        ...this.state.notifications,
+        bounceIcon: !this.refs.bounceIcon.props.checked,
+      },
+    });
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
+  },
+  handleBounceIconType(event) {
+    this.setState({
+      notifications: {
+        ...this.state.notifications,
+        bounceIconType: event.target.value,
+      },
+    });
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
   },
   handleShowUnreadBadge() {
     this.setState({
-      showUnreadBadge: !this.refs.showUnreadBadge.props.checked
+      showUnreadBadge: !this.refs.showUnreadBadge.props.checked,
     });
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
+  },
+
+  handleChangeUseSpellChecker() {
+    this.setState({
+      useSpellChecker: !this.refs.useSpellChecker.props.checked,
+    });
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
   },
 
   updateTeam(index, newData) {
     var teams = this.state.teams;
     teams[index] = newData;
     this.setState({
-      teams
+      teams,
     });
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_SERVERS);
   },
 
   addServer(team) {
     var teams = this.state.teams;
     teams.push(team);
     this.setState({
-      teams
+      teams,
     });
-    setImmediate(this.startSaveConfig);
+    setImmediate(this.startSaveConfig, CONFIG_TYPE_SERVERS);
   },
 
   render() {
+    const settingsPage = {
+      navbar: {
+        backgroundColor: '#fff',
+      },
+      close: {
+        textDecoration: 'none',
+        position: 'absolute',
+        right: '0',
+        top: '5px',
+        fontSize: '35px',
+        fontWeight: 'normal',
+        color: '#bbb',
+      },
+      heading: {
+        textAlign: 'center',
+        fontSize: '24px',
+        margin: '0',
+        padding: '1em 0',
+      },
+      sectionHeading: {
+        fontSize: '20px',
+        margin: '0',
+        padding: '1em 0',
+        float: 'left',
+      },
+      sectionHeadingLink: {
+        marginTop: '24px',
+        display: 'inline-block',
+        fontSize: '15px',
+      },
+      footer: {
+        padding: '0.4em 0',
+      },
+    };
+
     var teamsRow = (
       <Row>
         <Col md={12}>
@@ -245,11 +324,56 @@ const SettingsPage = React.createClass({
             onTeamsChange={this.handleTeamsChange}
             updateTeam={this.updateTeam}
             addServer={this.addServer}
-            onTeamClick={backToIndex}
+            allowTeamEdit={this.state.enableTeamModification}
+            onTeamClick={(index) => {
+              backToIndex(index + buildConfig.defaultTeams.length);
+            }}
           />
         </Col>
       </Row>
     );
+
+    var serversRow = (
+      <Row>
+        <Col
+          md={10}
+          xs={8}
+        >
+          <h2 style={settingsPage.sectionHeading}>{'Server Management'}</h2>
+          <div className='IndicatorContainer'>
+            <AutoSaveIndicator
+              id='serversSaveIndicator'
+              savingState={this.state.savingState.servers}
+              errorMessage={'Can\'t save your changes. Please try again.'}
+            />
+          </div>
+        </Col>
+        <Col
+          md={2}
+          xs={4}
+        >
+          <p className='text-right'>
+            <a
+              style={settingsPage.sectionHeadingLink}
+              id='addNewServer'
+              href='#'
+              onClick={this.toggleShowTeamForm}
+            >{'⊞ Add new server'}</a>
+          </p>
+        </Col>
+      </Row>
+    );
+
+    var srvMgmt;
+    if (this.props.enableServerManagement === true) {
+      srvMgmt = (
+        <div>
+          {serversRow}
+          {teamsRow}
+          <hr/>
+        </div>
+      );
+    }
 
     var options = [];
 
@@ -273,16 +397,16 @@ const SettingsPage = React.createClass({
 
     options.push(
       <Checkbox
-        key='inputDisableWebSecurity'
-        id='inputDisableWebSecurity'
-        ref='disablewebsecurity'
-        checked={!this.state.disablewebsecurity}
-        onChange={this.handleChangeDisableWebSecurity}
-      >{'Display secure content only'}
+        key='inputSpellChecker'
+        id='inputSpellChecker'
+        ref='useSpellChecker'
+        checked={this.state.useSpellChecker}
+        onChange={this.handleChangeUseSpellChecker}
+      >
+        {'Check spelling'}
         <HelpBlock>
-          {'If enabled, the app only displays secure (HTTPS/SSL) content.'}
-          {' '}
-          {'If disabled, the app displays secure and non-secure (HTTP) content such as images.'}
+          {'Highlight misspelled words in your messages.'}
+          {' Available for English, French, German, Spanish, and Dutch.'}
         </HelpBlock>
       </Checkbox>);
 
@@ -317,6 +441,48 @@ const SettingsPage = React.createClass({
         </Checkbox>);
     }
 
+    if (process.platform === 'darwin') {
+      options.push(
+        <FormGroup>
+          <Checkbox
+            inline={true}
+            key='bounceIcon'
+            id='inputBounceIcon'
+            ref='bounceIcon'
+            checked={this.state.notifications.bounceIcon}
+            onChange={this.handleBounceIcon}
+            style={{marginRight: '10px'}}
+          >{'Bounce the Dock icon'}
+          </Checkbox>
+          <Radio
+            inline={true}
+            name='bounceIconType'
+            value='informational'
+            disabled={!this.state.notifications.bounceIcon}
+            defaultChecked={
+              !this.state.notifications.bounceIconType ||
+              this.state.notifications.bounceIconType === 'informational'
+            }
+            onChange={this.handleBounceIconType}
+          >{'once'}</Radio>
+          {' '}
+          <Radio
+            inline={true}
+            name='bounceIconType'
+            value='critical'
+            disabled={!this.state.notifications.bounceIcon}
+            defaultChecked={this.state.notifications.bounceIconType === 'critical'}
+            onChange={this.handleBounceIconType}
+          >{'until I open the app'}</Radio>
+          <HelpBlock
+            style={{marginLeft: '20px'}}
+          >
+            {'If enabled, the Dock icon bounces once or until the user opens the app when a new notification is received.'}
+          </HelpBlock>
+        </FormGroup>
+      );
+    }
+
     if (process.platform === 'darwin' || process.platform === 'linux') {
       options.push(
         <Checkbox
@@ -326,8 +492,8 @@ const SettingsPage = React.createClass({
           checked={this.state.showTrayIcon}
           onChange={this.handleChangeShowTrayIcon}
         >{process.platform === 'darwin' ?
-          'Show Mattermost icon in the menu bar' :
-          'Show icon in the notification area'}
+            `Show ${remote.app.getName()} icon in the menu bar` :
+            'Show icon in the notification area'}
           <HelpBlock>
             {'Setting takes effect after restarting the app.'}
           </HelpBlock>
@@ -347,6 +513,7 @@ const SettingsPage = React.createClass({
             defaultChecked={this.state.trayIconTheme === 'light' || this.state.trayIconTheme === ''}
             onChange={() => {
               this.setState({trayIconTheme: 'light'});
+              setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
             }}
           >{'Light'}</Radio>
           {' '}
@@ -357,6 +524,7 @@ const SettingsPage = React.createClass({
             defaultChecked={this.state.trayIconTheme === 'dark'}
             onChange={() => {
               this.setState({trayIconTheme: 'dark'});
+              setImmediate(this.startSaveConfig, CONFIG_TYPE_APP_OPTIONS);
             }}
           >{'Dark'}</Radio>
         </FormGroup>
@@ -381,44 +549,17 @@ const SettingsPage = React.createClass({
         </Checkbox>);
     }
 
-    const settingsPage = {
-      navbar: {
-        backgroundColor: '#fff'
-      },
-      close: {
-        textDecoration: 'none',
-        position: 'absolute',
-        right: '0',
-        top: '5px',
-        fontSize: '35px',
-        fontWeight: 'normal',
-        color: '#bbb'
-      },
-      heading: {
-        textAlign: 'center',
-        fontSize: '24px',
-        margin: '0',
-        padding: '1em 0'
-      },
-      sectionHeading: {
-        fontSize: '20px',
-        margin: '0',
-        padding: '1em 0'
-      },
-      sectionHeadingLink: {
-        marginTop: '24px',
-        display: 'inline-block',
-        fontSize: '15px'
-      },
-      footer: {
-        padding: '0.4em 0'
-      }
-    };
-
     var optionsRow = (options.length > 0) ? (
       <Row>
         <Col md={12}>
           <h2 style={settingsPage.sectionHeading}>{'App Options'}</h2>
+          <div className='IndicatorContainer'>
+            <AutoSaveIndicator
+              id='appOptionsSaveIndicator'
+              savingState={this.state.savingState.appOptions}
+              errorMessage={'Can\'t save your changes. Please try again.'}
+            />
+          </div>
           { options.map((opt, i) => (
             <FormGroup key={`fromGroup${i}`}>
               {opt}
@@ -426,7 +567,7 @@ const SettingsPage = React.createClass({
           )) }
         </Col>
       </Row>
-      ) : null;
+    ) : null;
 
     return (
       <div>
@@ -434,20 +575,15 @@ const SettingsPage = React.createClass({
           className='navbar-fixed-top'
           style={settingsPage.navbar}
         >
-          <div className='IndicatorContainer'>
-            <AutoSaveIndicator
-              savingState={this.state.savingState}
-              errorMessage={'Can\'t save your changes. Please try again.'}
-            />
-          </div>
           <div style={{position: 'relative'}}>
             <h1 style={settingsPage.heading}>{'Settings'}</h1>
             <Button
               id='btnClose'
+              className='CloseButton'
               bsStyle='link'
               style={settingsPage.close}
               onClick={this.handleCancel}
-              disabled={this.state.disableClose}
+              disabled={settings.mergeDefaultTeams(this.state.teams).length === 0}
             >
               <span>{'×'}</span>
             </Button>
@@ -457,34 +593,12 @@ const SettingsPage = React.createClass({
           className='settingsPage'
           style={{paddingTop: '100px'}}
         >
-          <Row>
-            <Col
-              md={10}
-              xs={8}
-            >
-              <h2 style={settingsPage.sectionHeading}>{'Server Management'}</h2>
-            </Col>
-            <Col
-              md={2}
-              xs={4}
-            >
-              <p className='text-right'>
-                <a
-                  style={settingsPage.sectionHeadingLink}
-                  id='addNewServer'
-                  href='#'
-                  onClick={this.toggleShowTeamForm}
-                >{'⊞ Add new server'}</a>
-              </p>
-            </Col>
-          </Row>
-          { teamsRow }
-          <hr/>
+          { srvMgmt }
           { optionsRow }
         </Grid>
       </div>
     );
-  }
+  },
 });
 
 module.exports = SettingsPage;

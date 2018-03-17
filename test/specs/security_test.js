@@ -7,7 +7,7 @@ const http = require('http');
 const env = require('../modules/environment');
 
 describe('application', function desc() {
-  this.timeout(10000);
+  this.timeout(30000);
 
   const serverPort = 8181;
   const testURL = `http://localhost:${serverPort}`;
@@ -16,17 +16,17 @@ describe('application', function desc() {
     version: 1,
     teams: [{
       name: 'example_1',
-      url: testURL
+      url: testURL,
     }, {
       name: 'example_2',
-      url: testURL
-    }]
+      url: testURL,
+    }],
   };
 
   before(() => {
     this.server = http.createServer((req, res) => {
       res.writeHead(200, {
-        'Content-Type': 'text/html'
+        'Content-Type': 'text/html',
       });
       res.end(fs.readFileSync(path.resolve(env.sourceRootDir, 'test/modules/test.html'), 'utf-8'));
     }).listen(serverPort, '127.0.0.1');
@@ -51,17 +51,22 @@ describe('application', function desc() {
 
   it('should NOT be able to call Node.js API in webview', () => {
     env.addClientCommands(this.app.client);
+
+    // webview is handled as a window by chromedriver.
     return this.app.client.
+      windowByIndex(1).isNodeEnabled().then((enabled) => {
+        enabled.should.be.false;
+      }).
+      windowByIndex(2).isNodeEnabled().then((enabled) => {
+        enabled.should.be.false;
+      }).
+      windowByIndex(0).
       getAttribute('webview', 'nodeintegration').then((nodeintegration) => {
         // nodeintegration is an array of string
         nodeintegration.forEach((n) => {
           n.should.equal('false');
         });
-      }).
-
-      // webview is handled as a window by chromedriver.
-      windowByIndex(1).isNodeEnabled().should.eventually.be.false.
-      windowByIndex(2).isNodeEnabled().should.eventually.be.false;
+      });
   });
 
   it('should NOT be able to call Node.js API in a new window', () => {
@@ -77,7 +82,9 @@ describe('application', function desc() {
           return handles.value.length === 4;
         });
       }, 5000, 'expected a new window').
-      windowByIndex(3).isNodeEnabled().should.eventually.be.false;
+      windowByIndex(3).isNodeEnabled().then((enabled) => {
+        enabled.should.be.false;
+      });
   });
 
   it('should NOT be able to call eval() in any window', () => {
@@ -87,7 +94,11 @@ describe('application', function desc() {
         windowByIndex(index).
         execute(() => {
           return eval('1 + 1');
-        }).should.eventually.be.rejected;
+        }).then((result) => {
+          throw new Error(`Promise was unexpectedly fulfilled (result: ${result})`);
+        }, (error) => {
+          (error !== null).should.be.true;
+        });
     };
     const tryEvalInSettingsPage = () => {
       return this.app.client.
@@ -95,11 +106,15 @@ describe('application', function desc() {
         loadSettingsPage().
         execute(() => {
           return eval('1 + 1');
-        }).should.eventually.be.rejected;
+        }).then((result) => {
+          throw new Error(`Promise was unexpectedly fulfilled (result: ${result})`);
+        }, (error) => {
+          (error !== null).should.be.true;
+        });
     };
     return Promise.all([
       tryEval(0),
-      tryEvalInSettingsPage()
+      tryEvalInSettingsPage(),
     ]);
   });
 });

@@ -1,87 +1,75 @@
 'use strict';
 
 const fs = require('fs');
-const settingsVersion = 1;
+const path = require('path');
+
+const buildConfig = require('./config/buildConfig');
 
 function merge(base, target) {
   return Object.assign({}, base, target);
 }
 
-function loadDefault(version) {
-  var ver = version;
-  if (version == null) {
-    ver = settingsVersion;
-  }
-  switch (ver) {
-  case 1:
-    return {
-      teams: [],
-      showTrayIcon: false,
-      trayIconTheme: 'light',
-      disablewebsecurity: true,
-      minimizeToTray: false,
-      version: 1,
-      notifications: {
-        flashWindow: 0 // 0 = flash never, 1 = only when idle (after 10 seconds), 2 = always
-      },
-      showUnreadBadge: true
-    };
-  default:
-    return {};
-  }
+const defaultPreferences = require('./config/defaultPreferences');
+const upgradePreferences = require('./config/upgradePreferences');
+
+function loadDefault() {
+  return JSON.parse(JSON.stringify(defaultPreferences));
 }
 
-function upgradeV0toV1(configV0) {
-  var config = loadDefault(1);
-  config.teams.push({
-    name: 'Primary team',
-    url: configV0.url
-  });
-  return config;
+function hasBuildConfigDefaultTeams(config) {
+  return config.defaultTeams.length > 0;
 }
 
-function upgrade(config, newAppVersion) {
-  var configVersion = config.version ? config.version : 0;
-  if (newAppVersion) {
-    config.lastMattermostVersion = newAppVersion;
-  }
-  switch (configVersion) {
-  case 0:
-    return upgrade(upgradeV0toV1(config));
-  default:
-    return config;
-  }
+function upgrade(config) {
+  return upgradePreferences(config);
 }
 
 module.exports = {
-  version: settingsVersion,
+  version: defaultPreferences.version,
 
   upgrade,
 
   readFileSync(configFile) {
-    var config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-    if (config.version === settingsVersion) {
-      var defaultConfig = this.loadDefault();
-      config = merge(defaultConfig, config);
+    const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    if (config.version === defaultPreferences.version) {
+      const defaultConfig = loadDefault();
+      return merge(defaultConfig, config);
     }
     return config;
   },
 
   writeFile(configFile, config, callback) {
-    if (config.version !== settingsVersion) {
-      throw new Error('version ' + config.version + ' is not equal to ' + settingsVersion);
+    if (config.version !== defaultPreferences.version) {
+      throw new Error('version ' + config.version + ' is not equal to ' + defaultPreferences.version);
     }
     var data = JSON.stringify(config, null, '  ');
     fs.writeFile(configFile, data, 'utf8', callback);
   },
 
   writeFileSync(configFile, config) {
-    if (config.version !== settingsVersion) {
-      throw new Error('version ' + config.version + ' is not equal to ' + settingsVersion);
+    if (config.version !== defaultPreferences.version) {
+      throw new Error('version ' + config.version + ' is not equal to ' + defaultPreferences.version);
     }
+
+    const dir = path.dirname(configFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir);
+    }
+
     var data = JSON.stringify(config, null, '  ');
     fs.writeFileSync(configFile, data, 'utf8');
   },
 
-  loadDefault
+  loadDefault,
+
+  mergeDefaultTeams(teams) {
+    const newTeams = [];
+    if (hasBuildConfigDefaultTeams(buildConfig)) {
+      newTeams.push(...JSON.parse(JSON.stringify(buildConfig.defaultTeams)));
+    }
+    if (buildConfig.enableServerManagement) {
+      newTeams.push(...JSON.parse(JSON.stringify(teams)));
+    }
+    return newTeams;
+  },
 };

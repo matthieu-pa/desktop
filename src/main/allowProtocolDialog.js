@@ -1,13 +1,14 @@
 'use strict';
 
+const path = require('path');
+const fs = require('fs');
+
 const {
   app,
   dialog,
   ipcMain,
-  shell
+  shell,
 } = require('electron');
-const path = require('path');
-const fs = require('fs');
 
 const allowedProtocolFile = path.resolve(app.getPath('userData'), 'allowedProtocols.json');
 var allowedProtocols = [];
@@ -35,10 +36,10 @@ function initDialogEvent(mainWindow) {
       buttons: [
         'Yes',
         `Yes (Save ${protocol} as allowed)`,
-        'No'
+        'No',
       ],
       cancelId: 2,
-      noLink: true
+      noLink: true,
     }, (response) => {
       switch (response) {
       case 1: {
@@ -63,5 +64,5 @@ function initDialogEvent(mainWindow) {
 }
 
 module.exports = {
-  init
+  init,
 };

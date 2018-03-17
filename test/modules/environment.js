@@ -1,14 +1,11 @@
 'use strict';
 
-const chai = require('chai');
-const chaiAsPromised = require('chai-as-promised');
-
-chai.should();
-chai.use(chaiAsPromised);
-
 const fs = require('fs');
 const path = require('path');
+
 const Application = require('spectron').Application;
+const chai = require('chai');
+chai.should();
 
 const sourceRootDir = path.join(__dirname, '../..');
 const electronBinaryPath = (() => {
@@ -21,11 +18,12 @@ const electronBinaryPath = (() => {
 const userDataDir = path.join(sourceRootDir, 'test/testUserData/');
 const configFilePath = path.join(userDataDir, 'config.json');
 const boundsInfoPath = path.join(userDataDir, 'bounds-info.json');
-const mattermostURL = 'http://example.com/team';
+const mattermostURL = 'http://example.com/';
 
 module.exports = {
   sourceRootDir,
   configFilePath,
+  userDataDir,
   boundsInfoPath,
   mattermostURL,
 
@@ -41,18 +39,22 @@ module.exports = {
     });
   },
 
+  createTestUserDataDir() {
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir);
+    }
+  },
+
   getSpectronApp() {
-    const app = new Application({
+    return new Application({
       path: electronBinaryPath,
-      args: [`${path.join(sourceRootDir, 'dist')}`, `--data-dir=${userDataDir}`]
+      args: [`${path.join(sourceRootDir, 'src')}`, `--data-dir=${userDataDir}`, '--disable-dev-mode'],
     });
-    chaiAsPromised.transferPromiseness = app.transferPromiseness;
-    return app;
   },
 
   addClientCommands(client) {
     client.addCommand('loadSettingsPage', function async() {
-      return this.url('file://' + path.join(sourceRootDir, 'dist/browser/settings.html')).waitUntilWindowLoaded();
+      return this.url('file://' + path.join(sourceRootDir, 'src/browser/settings.html')).waitUntilWindowLoaded();
     });
     client.addCommand('isNodeEnabled', function async() {
       return this.execute(() => {
@@ -68,6 +70,13 @@ module.exports = {
         return requireResult.value;
       });
     });
+    client.addCommand('waitForAppOptionsAutoSaved', function async() {
+      const ID_APP_OPTIONS_SAVE_INDICATOR = '#appOptionsSaveIndicator';
+      const TIMEOUT = 5000;
+      return this.
+        waitForVisible(ID_APP_OPTIONS_SAVE_INDICATOR, TIMEOUT).
+        waitForVisible(ID_APP_OPTIONS_SAVE_INDICATOR, TIMEOUT, true);
+    });
   },
 
   // execute the test only when `condition` is true
@@ -76,5 +85,5 @@ module.exports = {
   },
   isOneOf(platforms) {
     return (platforms.indexOf(process.platform) !== -1);
-  }
+  },
 };

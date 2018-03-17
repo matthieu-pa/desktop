@@ -2,12 +2,16 @@
 
 const {
   app,
-  Menu
+  Menu,
 } = require('electron');
 
-function createTemplate(mainWindow, config) {
+const settings = require('../../common/settings');
+
+function createTemplate(mainWindow, config, isDev) {
+  const settingsURL = isDev ? 'http://localhost:8080/browser/settings.html' : `file://${app.getAppPath()}/browser/settings.html`;
+  const teams = settings.mergeDefaultTeams(config.teams);
   var template = [
-    ...config.teams.slice(0, 9).map((team, i) => {
+    ...teams.slice(0, 9).map((team, i) => {
       return {
         label: team.name,
         click: () => {
@@ -18,32 +22,32 @@ function createTemplate(mainWindow, config) {
             app.dock.show();
             mainWindow.focus();
           }
-        }
+        },
       };
     }), {
-      type: 'separator'
+      type: 'separator',
     }, {
       label: process.platform === 'darwin' ? 'Preferences...' : 'Settings',
       click: () => {
-        mainWindow.loadURL('file://' + __dirname + '/browser/settings.html');
+        mainWindow.loadURL(settingsURL);
         showOrRestore(mainWindow);
 
         if (process.platform === 'darwin') {
           app.dock.show();
           mainWindow.focus();
         }
-      }
+      },
     }, {
-      type: 'separator'
+      type: 'separator',
     }, {
-      role: 'quit'
-    }
+      role: 'quit',
+    },
   ];
   return template;
 }
 
-function createMenu(mainWindow, config) {
-  return Menu.buildFromTemplate(createTemplate(mainWindow, config));
+function createMenu(mainWindow, config, isDev) {
+  return Menu.buildFromTemplate(createTemplate(mainWindow, config, isDev));
 }
 
 function showOrRestore(window) {
@@ -55,5 +59,5 @@ function showOrRestore(window) {
 }
 
 module.exports = {
-  createMenu
+  createMenu,
 };
