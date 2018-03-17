@@ -323,7 +323,7 @@ const MainPage = createReactClass({
       //user and password without login popup
       // authServerURL = `${tmpURL.protocol}//${tmpURL.username}:${tmpURL.password}@${tmpURL.host}`;
       // authInfo = this.state.loginQueue[0].authInfo;
-      this.handleLogin(request,'parizy.matthieu@jp.fujitsu.com', '');
+      this.handleLogin(request,'user@mail.com', 'password');
       // this.handleLogin(request, tmpURL.username, tmpURL.password);
     }
     var modal = (
