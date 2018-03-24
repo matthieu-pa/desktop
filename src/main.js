@@ -319,6 +319,7 @@ const loginCallbackMap = new Map();
 
 ipcMain.on('login-credentials', (event, request, user, password) => {
   const callback = loginCallbackMap.get(JSON.stringify(request));
+  //HACK4: try to remove the if and set user,password here
   if (callback != null) {
     callback(user, password);
   }

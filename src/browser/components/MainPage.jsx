@@ -56,6 +56,7 @@ const MainPage = createReactClass({
     var self = this;
     ipcRenderer.on('login-request', (event, request, authInfo) => {
       self.setState({
+        // below line set to false doesnt break anything
         loginRequired: true,
       });
       const loginQueue = self.state.loginQueue;
@@ -215,6 +216,8 @@ const MainPage = createReactClass({
   },
 
   handleLogin(request, username, password) {
+    //HACK1: shortcutting username and password here allows to not enter 
+    //login and password but login windo still pop
     ipcRenderer.send('login-credentials', request, username, password);
     const loginQueue = this.state.loginQueue;
     loginQueue.shift();
@@ -313,9 +316,15 @@ const MainPage = createReactClass({
     var authInfo = null;
     if (this.state.loginQueue.length !== 0) {
       request = this.state.loginQueue[0].request;
+      //proxy server parsing done here
       const tmpURL = url.parse(this.state.loginQueue[0].request.url);
       authServerURL = `${tmpURL.protocol}//${tmpURL.host}`;
-      authInfo = this.state.loginQueue[0].authInfo;
+      //HACK2: removing the authInfo part and calling handleLogin allows to input
+      //user and password without login popup
+      // authServerURL = `${tmpURL.protocol}//${tmpURL.username}:${tmpURL.password}@${tmpURL.host}`;
+      // authInfo = this.state.loginQueue[0].authInfo;
+      this.handleLogin(request,'user@mail.com', 'password');
+      // this.handleLogin(request, tmpURL.username, tmpURL.password);
     }
     var modal = (
       <NewTeamModal
@@ -341,6 +350,7 @@ const MainPage = createReactClass({
         className='MainPage'
         onClick={this.focusOnWebView}
       >
+      {/*the place to remove the window to ask for login*/}
         <LoginModal
           show={this.state.loginQueue.length !== 0}
           request={request}

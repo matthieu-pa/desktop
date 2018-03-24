@@ -29,6 +29,7 @@ class LoginModal extends React.Component {
     }
     const message = `${theServer} requires a username and password.`;
     return (
+      //HACK3: Try to set this.props.show to false and see how it goes
       <Modal show={this.props.show}>
         <Modal.Header>
           <Modal.Title>{'Authentication Required'}</Modal.Title>
