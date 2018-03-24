@@ -1,3 +1,9 @@
+# What this fork is for
+Simple hack to hard code your proxy login/password for a proxy.pac. Nothing fancy worthy of doing a pull request on mattermost/desktop.
+
+## How to make it work
+Simply edit [MainPage.jsx#L326](https://github.com/matthieu-pa/desktop/blob/master/src/browser/components/MainPage.jsx#L326) to set your own login/password, build and voila. 
+
 # Mattermost Desktop
 
 Native desktop application for [Mattermost](http://www.mattermost.org/) running on Windows, Mac, and Linux.
