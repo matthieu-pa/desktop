@@ -4,6 +4,8 @@ Simple hack to hard code your proxy login/password for a proxy.pac. Nothing fanc
 ## How to make it work
 Simply edit [MainPage.jsx#L326](https://github.com/matthieu-pa/desktop/blob/master/src/browser/components/MainPage.jsx#L326) to set your own login/password, build and voila. 
 
+---
+(original REAMDME.md from here)
 # Mattermost Desktop
 
 Native desktop application for [Mattermost](http://www.mattermost.org/) running on Windows, Mac, and Linux.
